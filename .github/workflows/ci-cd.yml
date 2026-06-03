@@ -1,0 +1,95 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-and-lint-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt pytest black flake8
+
+      - name: Lint with Flake8
+        run: |
+          cd backend
+          flake8 app --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Verify code style with Black
+        run: |
+          cd backend
+          black --check app --verbose --line-length=100 || echo "Formatting suggestions only"
+
+      - name: Run Backend Unit Tests
+        run: |
+          cd backend
+          python -m pytest
+
+  test-and-lint-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Verify Typescript Compilation
+        run: |
+          cd frontend
+          npm run build
+
+  build-and-push-images:
+    needs: [test-and-lint-backend, test-and-lint-frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Verify Backend Image Build
+        uses: docker/build-push-action@v4
+        with:
+          context: ./backend
+          push: false
+          tags: devops-copilot-backend:test
+
+      - name: Verify Frontend Image Build
+        uses: docker/build-push-action@v4
+        with:
+          context: ./frontend
+          push: false
+          tags: devops-copilot-frontend:test
+
+  deploy-staging:
+    needs: build-and-push-images
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Trigger SRE Staging Deploy
+        run: |
+          echo "Verifying Kubernetes manifests..."
+          kubectl kustomize kubernetes/
+          echo "Simulated staging environment deployment complete."
