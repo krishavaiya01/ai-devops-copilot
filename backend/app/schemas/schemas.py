@@ -2,14 +2,17 @@ from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
+
 # --- Token Schemas ---
 class Token(BaseModel):
     access_token: str
     token_type: str
 
+
 class TokenData(BaseModel):
     username: Optional[str] = None
     role: Optional[str] = None
+
 
 # --- User Schemas ---
 class UserBase(BaseModel):
@@ -17,8 +20,10 @@ class UserBase(BaseModel):
     email: EmailStr
     role: str = "engineer"
 
+
 class UserCreate(UserBase):
     password: str
+
 
 class UserResponse(UserBase):
     id: int
@@ -27,13 +32,16 @@ class UserResponse(UserBase):
     class Config:
         from_attributes = True
 
+
 # --- Project Schemas ---
 class ProjectBase(BaseModel):
     name: str
     description: Optional[str] = None
 
+
 class ProjectCreate(ProjectBase):
     pass
+
 
 class ProjectResponse(ProjectBase):
     id: int
@@ -43,6 +51,7 @@ class ProjectResponse(ProjectBase):
     class Config:
         from_attributes = True
 
+
 # --- Incident Schemas ---
 class IncidentBase(BaseModel):
     title: str
@@ -50,8 +59,10 @@ class IncidentBase(BaseModel):
     severity: str = "medium"  # low, medium, high, critical
     status: str = "open"  # open, investigating, resolved
 
+
 class IncidentCreate(IncidentBase):
     project_id: Optional[int] = None
+
 
 class IncidentUpdate(BaseModel):
     title: Optional[str] = None
@@ -59,6 +70,7 @@ class IncidentUpdate(BaseModel):
     severity: Optional[str] = None
     status: Optional[str] = None
     timeline_event: Optional[str] = None  # To append an event
+
 
 class IncidentResponse(IncidentBase):
     id: int
@@ -70,6 +82,7 @@ class IncidentResponse(IncidentBase):
     class Config:
         from_attributes = True
 
+
 # --- Log Schemas ---
 class BusinessImpactSchema(BaseModel):
     affected_users: int
@@ -77,10 +90,12 @@ class BusinessImpactSchema(BaseModel):
     estimated_revenue_impact_usd: float
     summary: str
 
+
 class TimelineEventSchema(BaseModel):
     timestamp: str
     event: str
     confidence_score: float
+
 
 class SubsystemAnalysisSchema(BaseModel):
     status: str  # Healthy, Warning, Critical
@@ -89,12 +104,14 @@ class SubsystemAnalysisSchema(BaseModel):
     severity: str  # P0-P5
     confidence: float
 
+
 class RootCauseMatrixItem(BaseModel):
     root_cause: str
     subsystem: str
     confidence: float
     type: str  # Primary, Secondary
     evidence: str
+
 
 class SubsystemsAnalysis(BaseModel):
     security: SubsystemAnalysisSchema
@@ -109,6 +126,7 @@ class SubsystemsAnalysis(BaseModel):
     cicd: SubsystemAnalysisSchema
     data_integrity: SubsystemAnalysisSchema
     business_impact: SubsystemAnalysisSchema
+
 
 class LogAnalysisResponse(BaseModel):
     executive_summary: str
@@ -136,9 +154,11 @@ class LogAnalysisResponse(BaseModel):
     root_cause_matrix: Optional[List[RootCauseMatrixItem]] = None
     subsystem_analysis: Optional[SubsystemsAnalysis] = None
 
+
 class LogCreate(BaseModel):
     content: str
     incident_id: Optional[int] = None
+
 
 class LogResponse(BaseModel):
     id: int
@@ -151,6 +171,7 @@ class LogResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 # --- Alert Schemas ---
 class AlertBase(BaseModel):
     source: str
@@ -160,11 +181,14 @@ class AlertBase(BaseModel):
     status: str = "active"
     metric_value: Optional[str] = None
 
+
 class AlertCreate(AlertBase):
     pass
 
+
 class AlertUpdate(BaseModel):
     status: Optional[str] = None  # active, acknowledged, resolved
+
 
 class AlertResponse(AlertBase):
     id: int
@@ -172,6 +196,7 @@ class AlertResponse(AlertBase):
 
     class Config:
         from_attributes = True
+
 
 # --- Cloud Resource Schemas ---
 class CloudResourceResponse(BaseModel):
@@ -186,6 +211,7 @@ class CloudResourceResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 # --- Recommendation Schemas ---
 class RecommendationResponse(BaseModel):
     id: int
@@ -198,20 +224,25 @@ class RecommendationResponse(BaseModel):
     class Config:
         from_attributes = True
 
+
 class RecommendationUpdate(BaseModel):
     status: str  # applied, dismissed
+
 
 # --- Chat Schemas ---
 class ChatMessageBase(BaseModel):
     role: str
     content: str
 
+
 class ChatSessionCreate(BaseModel):
     session_id: str
+
 
 class ChatMessageInput(BaseModel):
     session_id: str
     content: str
+
 
 class ChatMessageResponse(ChatMessageBase):
     id: int

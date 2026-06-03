@@ -1,73 +1,79 @@
-# React + TypeScript + Vite
+# AI DevOps Copilot - Frontend React Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The frontend client of the **AI DevOps Copilot** platform is a premium, responsive Single Page Application (SPA) designed to provide SREs and Cloud Engineers with a command-center interface to monitor and analyze infrastructure.
 
-Currently, two official plugins are available:
+---
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ Tech Stack & Features
 
-## React Compiler
+- **Core Framework**: React 19 & TypeScript
+- **Build Tool**: Vite
+- **Styling**: Tailwind CSS
+- **Visualization & Graphs**: Recharts (for real-time Grafana-style CPU, memory, latency, and error widgets)
+- **Icons**: Lucide Icons
+- **HTTP Client**: Axios (configured with interceptors to automatically forward JWT authentication tokens)
+- **State Management**: React Context API (`AuthContext`) tracking session login, token payloads, and active user roles (`admin` / `engineer`)
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+---
 
-## Expanding the ESLint configuration
+## 📂 Project Structure
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```text
+frontend/
+├── public/               # Static assets
+├── src/
+│   ├── components/       # Layout, Navigation Sidebar, ProtectedRoute wrappers
+│   ├── context/          # JWT Auth Context state & handlers
+│   ├── pages/            # View pages:
+│   │   ├── Dashboard.tsx          # Real-time infrastructure charts
+│   │   ├── LogAnalyzer.tsx        # Log paste, analysis, and AI suggestion console
+│   │   ├── IncidentCenter.tsx     # Active outages list, creation forms, timelines
+│   │   ├── CostOptimization.tsx   # AWS capacity/spend saving guidelines
+│   │   ├── AIChat.tsx             # Interactive stateful SRE AI helper
+│   │   ├── Settings.tsx           # Setup credentials and config adjustments
+│   │   └── Login.tsx              # Platform login credentials entry
+│   ├── services/         # Axios API connection endpoints
+│   ├── App.tsx           # Router layout and private route mappings
+│   ├── main.tsx          # React application entrypoint
+│   └── index.css         # Tailwind directives & global styling base
+├── Dockerfile            # Production NGINX web server image builder
+├── package.json          # Node dependency scripts
+├── tsconfig.json         # TypeScript configuration
+└── tailwind.config.js    # Tailwind layout utility configurations
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+---
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+## 🚀 Setup & Local Execution
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+### 1. Prerequisites
+- Node.js 20+
+- A running Backend API server (by default expected at `http://localhost:8000`)
+
+### 2. Install Dependencies
+```powershell
+npm install
+```
+
+### 3. Running the Client
+Start the Vite development hot-reloading server:
+```powershell
+npm run dev
+```
+*The React client will be available at [http://localhost:5173](http://localhost:5173).*
+
+---
+
+## 🏗️ Production Build & Verification
+
+### 1. Type Check & Compile Production Assets
+Ensure TypeScript compiles successfully and builds output chunks to the `/dist` folder:
+```powershell
+npm run build
+```
+
+### 2. Linting (ESLint)
+Verify there are no syntax or style guidelines issues:
+```powershell
+npm run lint
 ```

@@ -200,3 +200,14 @@ Deploy manifests to your local cluster (Minikube / Kind) or Cloud EKS:
 ### Metrics Scraper Router
 - `GET /metrics`: Prometheus scraper-compatible text statistics.
 - `GET /api/metrics/dashboard`: Time-series JSON array mapping CPU, memory, latencies, and error fluctuations.
+
+---
+
+## 🔬 Code Verification & Pipelines
+
+This repository is production-ready, fully verified, and linted:
+- **CI/CD Validation**: The GitHub Actions workflow (`.github/workflows/ci-cd.yml`) is optimized with modern runner actions (v4/v5), aligned to Python 3.12, and verified to successfully checkout code and compile components.
+- **Code Style**: Python backend files are fully formatted using **Black** (`--line-length=100`) and validated with **Flake8**.
+- **Unit Tests**: Comprehensive backend test coverage (API and Log analysis) is verified locally and passing.
+- **Kubernetes Kustomization**: The `kubernetes/` manifests directory includes a `kustomization.yaml` grouping resources, and verified using `kubectl kustomize`.
+

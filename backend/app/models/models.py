@@ -3,6 +3,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, JSON
 from sqlalchemy.orm import relationship
 from app.core.db import Base
 
+
 class User(Base):
     __tablename__ = "users"
 
@@ -40,8 +41,12 @@ class Incident(Base):
     severity = Column(String, default="medium")  # low, medium, high, critical
     status = Column(String, default="open")  # open, investigating, resolved
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-    timeline = Column(JSON, default=list)  # List of objects: {"timestamp": "...", "event": "...", "user": "..."}
+    updated_at = Column(
+        DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow
+    )
+    timeline = Column(
+        JSON, default=list
+    )  # List of objects: {"timestamp": "...", "event": "...", "user": "..."}
 
     project = relationship("Project", back_populates="incidents")
     logs = relationship("Log", back_populates="incident")
