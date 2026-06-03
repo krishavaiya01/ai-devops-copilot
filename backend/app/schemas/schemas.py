@@ -82,6 +82,31 @@ class TimelineEventSchema(BaseModel):
     event: str
     confidence_score: float
 
+class SubsystemAnalysisSchema(BaseModel):
+    status: str  # Healthy, Degraded, Failed, Info, N/A
+    findings: str
+    evidence: str
+    severity: str  # None, Low, Medium, High, Critical
+    confidence: float
+
+class RootCauseMatrixItem(BaseModel):
+    root_cause: str
+    subsystem: str
+    confidence: float
+    type: str  # Primary, Secondary
+    evidence: str
+
+class SubsystemsAnalysis(BaseModel):
+    security: SubsystemAnalysisSchema
+    kubernetes: SubsystemAnalysisSchema
+    postgresql: SubsystemAnalysisSchema
+    redis: SubsystemAnalysisSchema
+    kafka: SubsystemAnalysisSchema
+    aws_infrastructure: SubsystemAnalysisSchema
+    network: SubsystemAnalysisSchema
+    cicd: SubsystemAnalysisSchema
+    business_impact: SubsystemAnalysisSchema
+
 class LogAnalysisResponse(BaseModel):
     executive_summary: str
     primary_root_causes: List[str]
@@ -104,6 +129,8 @@ class LogAnalysisResponse(BaseModel):
     critical_findings_missed: List[str]
     timeline_reconstruction: List[TimelineEventSchema]
     documentation_links: List[str]
+    root_cause_matrix: Optional[List[RootCauseMatrixItem]] = None
+    subsystem_analysis: Optional[SubsystemsAnalysis] = None
 
 class LogCreate(BaseModel):
     content: str

@@ -36,6 +36,34 @@ interface TimelineEvent {
   confidence_score: number;
 }
 
+interface SubsystemAnalysis {
+  status: string;
+  findings: string;
+  evidence: string;
+  severity: string;
+  confidence: number;
+}
+
+interface SubsystemsAnalysis {
+  security: SubsystemAnalysis;
+  kubernetes: SubsystemAnalysis;
+  postgresql: SubsystemAnalysis;
+  redis: SubsystemAnalysis;
+  kafka: SubsystemAnalysis;
+  aws_infrastructure: SubsystemAnalysis;
+  network: SubsystemAnalysis;
+  cicd: SubsystemAnalysis;
+  business_impact: SubsystemAnalysis;
+}
+
+interface RootCauseMatrixItem {
+  root_cause: string;
+  subsystem: string;
+  confidence: number;
+  type: string;
+  evidence: string;
+}
+
 interface Analysis {
   executive_summary: string;
   primary_root_causes: string[];
@@ -58,6 +86,8 @@ interface Analysis {
   critical_findings_missed: string[];
   timeline_reconstruction: TimelineEvent[];
   documentation_links: string[];
+  root_cause_matrix?: RootCauseMatrixItem[];
+  subsystem_analysis?: SubsystemsAnalysis;
 }
 
 interface LogRecord {
@@ -66,6 +96,44 @@ interface LogRecord {
   analysis: Analysis | null;
   created_at: string;
 }
+
+const getSubsystemTitle = (key: string) => {
+  const titles: Record<string, string> = {
+    security: "Security",
+    kubernetes: "Kubernetes",
+    postgresql: "PostgreSQL",
+    redis: "Redis",
+    kafka: "Kafka",
+    aws_infrastructure: "AWS Infrastructure",
+    network: "Network",
+    cicd: "CI/CD",
+    business_impact: "Business Impact"
+  };
+  return titles[key] || key;
+};
+
+const getStatusBadgeColor = (status: string) => {
+  const s = status?.toUpperCase();
+  if (s === 'HEALTHY') return 'bg-emerald-950/40 text-emerald-400 border-emerald-900/40';
+  if (s === 'DEGRADED') return 'bg-amber-950/40 text-amber-400 border-amber-900/40';
+  if (s === 'FAILED') return 'bg-rose-950/40 text-rose-400 border-rose-900/40';
+  if (s === 'INFO') return 'bg-blue-950/40 text-blue-400 border-blue-900/40';
+  return 'bg-gray-800/40 text-gray-400 border-gray-700/50';
+};
+
+const renderSubsystemIcon = (key: string) => {
+  const iconClass = "h-4 w-4 text-indigo-400 shrink-0";
+  if (key === 'security') return <Lock className="h-4 w-4 text-rose-400 shrink-0" />;
+  if (key === 'kubernetes') return <Layers className={iconClass} />;
+  if (key === 'postgresql') return <Database className="h-4 w-4 text-emerald-400 shrink-0" />;
+  if (key === 'redis') return <Network className="h-4 w-4 text-rose-400 shrink-0" />;
+  if (key === 'kafka') return <Radio className="h-4 w-4 text-amber-400 shrink-0" />;
+  if (key === 'aws_infrastructure') return <Cloud className="h-4 w-4 text-amber-400 shrink-0" />;
+  if (key === 'network') return <Server className={iconClass} />;
+  if (key === 'cicd') return <Workflow className="h-4 w-4 text-cyan-400 shrink-0" />;
+  if (key === 'business_impact') return <TrendingDown className="h-4 w-4 text-emerald-400 shrink-0" />;
+  return <Cpu className={iconClass} />;
+};
 
 export const LogAnalyzer: React.FC = () => {
   const [logContent, setLogContent] = useState<string>('');
@@ -369,6 +437,111 @@ export const LogAnalyzer: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Root Cause Matrix */}
+            {result.analysis?.root_cause_matrix && result.analysis.root_cause_matrix.length > 0 && (
+              <div className="border-t border-[#1e293b] pt-6 space-y-3">
+                <h5 className="text-[10px] font-bold text-indigo-400 uppercase tracking-widest">Root Cause Correlation Matrix</h5>
+                <div className="bg-[#0a101d] border border-[#1e293b] rounded-xl overflow-hidden">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className="border-b border-[#1e293b] bg-[#111827]">
+                        <th className="p-3 text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Root Cause</th>
+                        <th className="p-3 text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Subsystem</th>
+                        <th className="p-3 text-gray-400 font-semibold uppercase tracking-wider text-[9px]">Classification</th>
+                        <th className="p-3 text-gray-400 font-semibold uppercase tracking-wider text-[9px] text-right">Confidence</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#1e293b]/50">
+                      {result.analysis.root_cause_matrix.map((item, idx) => (
+                        <tr key={idx} className="hover:bg-[#111827]/40 transition-colors">
+                          <td className="p-3 font-medium text-gray-200">{item.root_cause}</td>
+                          <td className="p-3">
+                            <span className="bg-indigo-950/40 text-indigo-400 border border-indigo-900/40 text-[10px] px-2 py-0.5 rounded font-mono font-bold">
+                              {item.subsystem}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold border ${
+                              item.type === 'Primary' 
+                                ? 'bg-rose-950/30 text-rose-400 border-rose-900/30' 
+                                : 'bg-amber-950/30 text-amber-400 border-amber-900/30'
+                            }`}>
+                              {item.type}
+                            </span>
+                          </td>
+                          <td className="p-3 text-right font-mono text-gray-300 font-bold">{item.confidence}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Subsystem Analysis Deck */}
+            {result.analysis?.subsystem_analysis && (
+              <div className="border-t border-[#1e293b] pt-6 space-y-4">
+                <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Complete Subsystem Analysis</h5>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {Object.entries(result.analysis.subsystem_analysis).map(([key, value]) => {
+                    const subsystem = value as SubsystemAnalysis;
+                    return (
+                      <div key={key} className="bg-[#0a101d] border border-[#1e293b] p-4 rounded-xl flex flex-col justify-between text-xs space-y-3 hover:border-indigo-500/30 transition-all">
+                        <div className="flex items-center justify-between border-b border-[#1e293b]/50 pb-2">
+                          <div className="flex items-center space-x-2">
+                            {renderSubsystemIcon(key)}
+                            <span className="font-bold text-white text-[11px]">{getSubsystemTitle(key)}</span>
+                          </div>
+                          <span className={`text-[9px] font-extrabold uppercase px-2 py-0.5 rounded-full border ${getStatusBadgeColor(subsystem.status)}`}>
+                            {subsystem.status}
+                          </span>
+                        </div>
+                        
+                        <div className="flex-1 space-y-2">
+                          <p className="text-gray-300 text-[11px] leading-relaxed font-medium">{subsystem.findings}</p>
+                          {subsystem.evidence && subsystem.evidence !== 'None' && (
+                            <div className="bg-[#070b13] border border-[#1e293b]/50 p-2 rounded text-[10px] font-mono text-indigo-300 max-h-16 overflow-y-auto leading-relaxed">
+                              <span className="text-gray-500 block text-[8px] uppercase tracking-wider mb-0.5">Evidence:</span>
+                              {subsystem.evidence}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="pt-2 border-t border-[#1e293b]/30 space-y-1.5">
+                          <div className="flex items-center justify-between text-[10px]">
+                            <span className="text-gray-500 font-semibold">Severity:</span>
+                            <span className={`font-bold px-1.5 py-0.2 rounded border text-[9px] ${
+                              subsystem.severity === 'Critical' || subsystem.severity === 'High'
+                                ? 'text-rose-400 border-rose-900/30 bg-rose-950/20'
+                                : subsystem.severity === 'Medium'
+                                ? 'text-amber-400 border-amber-900/30 bg-amber-950/20'
+                                : subsystem.severity === 'Low'
+                                ? 'text-blue-400 border-blue-900/30 bg-blue-950/20'
+                                : 'text-gray-500 border-gray-700/30'
+                            }`}>
+                              {subsystem.severity}
+                            </span>
+                          </div>
+                          <div className="space-y-1">
+                            <div className="flex items-center justify-between text-[9px] text-gray-500">
+                              <span>Confidence:</span>
+                              <span className="font-mono font-bold text-gray-400">{subsystem.confidence}%</span>
+                            </div>
+                            <div className="w-full bg-[#162238] rounded-full h-1">
+                              <div 
+                                className="bg-indigo-500 h-1 rounded-full transition-all duration-500" 
+                                style={{ width: `${subsystem.confidence}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Timeline Reconstruction Stepper */}
             {result.analysis?.timeline_reconstruction && result.analysis.timeline_reconstruction.length > 0 && (
