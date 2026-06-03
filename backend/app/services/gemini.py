@@ -1278,22 +1278,299 @@ async def analyze_log_with_ai(content: str) -> dict:
     return analyze_log_locally(content)
 
 
+def run_offline_chat_response(new_message: str) -> str:
+    msg_lower = new_message.lower()
+    responses = []
+
+    # 1. Docker / Container
+    if any(w in msg_lower for w in ["docker", "container", "image", "dockerfile"]):
+        responses.append("""### 🐳 Docker & Container Runbook
+
+> [!NOTE]
+> Containerization failures are typically caused by memory limits (OOMKilled), application errors (Exit Code 1), or network/mount mismatches.
+
+#### Diagnostic Workflow
+1. **Inspect Container Status**:
+   ```bash
+   docker ps -a --format "table {{.ID}}\\t{{.Names}}\\t{{.Status}}\\t{{.Ports}}"
+   ```
+2. **Retrieve Log Streams**:
+   ```bash
+   docker logs --tail 100 -f <container_name_or_id>
+   ```
+3. **Analyze Resource Squeezes**:
+   ```bash
+   docker stats --no-stream
+   ```
+4. **Inspect Metadata & Network Config**:
+   ```bash
+   docker inspect <container_name_or_id>
+   ```
+
+#### Common Exit Codes Reference
+| Exit Code | Signal / Reason | Troubleshooting Actions |
+|---|---|---|
+| **137** | `SIGKILL` (OOMKilled) | Inspect kernel logs (`dmesg -T \\| grep -i oom`). Increase container memory limit. |
+| **139** | `SIGSEGV` (Segmentation fault) | Check native dependencies, memory safety violations, or library version mismatches. |
+| **1** | Application Error | Examine stdout/stderr logs via `docker logs`. Check application config files. |
+""")
+
+    # 2. Kubernetes / Pod
+    if any(w in msg_lower for w in ["kubernetes", "k8s", "pod", "kubectl", "ingress", "helm", "deployment", "statefulset"]):
+        responses.append("""### ☸️ Kubernetes (K8s) Cluster Diagnostics
+
+> [!IMPORTANT]
+> A robust K8s debugging flow isolates issues sequentially from Pod status, Events, Logs, to Network/Service connectivity.
+
+#### Step-by-Step Triage Flow
+1. **Check Pod Lifecycle States**:
+   ```bash
+   kubectl get pods -A -o wide --field-selector status.phase!=Running
+   ```
+2. **Inspect Cluster Lifecycle Events**:
+   ```bash
+   kubectl get events --sort-by='.metadata.creationTimestamp' -n <namespace>
+   ```
+3. **Describe Pod Configuration & Failures**:
+   ```bash
+   kubectl describe pod <pod-name> -n <namespace>
+   ```
+4. **Trace Container Output Logs (including past instances)**:
+   ```bash
+   # Current instance logs
+   kubectl logs <pod-name> -n <namespace> --tail=100
+   # Previous crashed instance logs
+   kubectl logs <pod-name> -n <namespace> --previous
+   ```
+5. **Verify Ingress Routing Status**:
+   ```bash
+   kubectl get ingress -A
+   kubectl describe ingress <ingress-name> -n <namespace>
+   ```
+""")
+
+    # 3. AWS / Cost / Optimization
+    if any(w in msg_lower for w in ["aws", "cloud", "cost", "optimize", "billing", "ebs", "ec2", "s3", "iam"]):
+        responses.append("""### ☁️ AWS Cloud Infrastructure & Cost Optimization
+
+> [!TIP]
+> AWS cloud architecture relies on maintaining resource hygiene—pruning detached disks, consolidating compute plans, and selecting appropriate storage tiers.
+
+#### Quick Cost-Saving Action Checklist
+* **Identify Idle Compute Instances**: Audit utilization patterns to locate EC2 instances with average CPU $< 5\\%$.
+* **Find Orphaned EBS Storage**: List all volumes in `available` (unattached) status and delete them.
+  ```bash
+  aws ec2 describe-volumes --filters Name=status,Values=available --query "Volumes[*].{VolumeId:VolumeId,Size:Size}" --output table
+  ```
+* **Upgrade Volume Specifications**: Migrate from `gp2` to `gp3` volumes for up to 20% cost savings and improved baseline performance.
+* **Identify Orphaned IP Addresses**: List unassociated Elastic IPs (EIPs) to prevent idle charges.
+  ```bash
+  aws ec2 describe-addresses --query "Addresses[?AssociationId==null].{PublicIp:PublicIp,AllocationId:AllocationId}" --output table
+  ```
+* **Verify Active Identity Context**:
+  ```bash
+  aws sts get-caller-identity
+  ```
+""")
+
+    # 4. CPU / RAM / Memory / Performance / Saturation
+    if any(w in msg_lower for w in ["cpu", "ram", "memory", "performance", "saturation", "load", "leak", "oom", "slow"]):
+        responses.append("""### ⚡ System Performance & Resource Saturation
+
+> [!WARNING]
+> High load average is not always a CPU bottleneck—check for I/O wait times, paging activity, and application-level memory heap leaks.
+
+#### Linux Host Troubleshooting Tools
+1. **Analyze Overall Process Activity**:
+   ```bash
+   top -b -n 1 | head -n 25
+   ```
+2. **Review Memory & Swap Space Allocation**:
+   ```bash
+   free -h
+   ```
+3. **Inspect Real-time Disk I/O Statistics**:
+   ```bash
+   vmstat 1 5
+   ```
+4. **Identify Top 10 Memory Consuming Processes**:
+   ```bash
+   ps aux --sort=-%mem | head -n 10 | awk '{print $2, $4, $11}'
+   ```
+
+#### Application Memory Profiling (NodeJS example)
+* **Trace heap allocation flags**: Run with `--max-old-space-size=2048` to adjust limits.
+* **Analyze core dump or heap dump snapshots**: Utilize `heapdump` or Chrome DevTools to trace reference leaks.
+""")
+
+    # 5. Database / Postgres
+    if any(w in msg_lower for w in ["database", "postgres", "postgresql", "sql", "query", "connection pool"]):
+        responses.append("""### 🗄️ PostgreSQL Database Performance & Pools
+
+> [!CAUTION]
+> Avoid running unindexed queries. Database connection pool exhaustion will cascade and cause API gateway time-outs.
+
+#### Incident Triage Runbook
+1. **Analyze Pool Connection State Density**:
+   ```sql
+   SELECT count(*), state, query 
+   FROM pg_stat_activity 
+   GROUP BY state, query 
+   ORDER BY count(*) DESC;
+   ```
+2. **Identify Long-running Transactions ($> 30$ seconds)**:
+   ```sql
+   SELECT pid, now() - xact_start AS duration, query, state
+   FROM pg_stat_activity
+   WHERE state != 'idle' AND now() - xact_start > interval '30 seconds'
+   ORDER BY duration DESC;
+   ```
+3. **Terminate a Blocked/Blocking Query PID**:
+   ```sql
+   -- Soft cancel
+   SELECT pg_cancel_backend(<pid>);
+   -- Hard termination
+   SELECT pg_terminate_backend(<pid>);
+   ```
+4. **Optimize Index Statistics**:
+   ```sql
+   VACUUM ANALYZE <table_name>;
+   ```
+""")
+
+    # 6. Redis / Cache
+    if any(w in msg_lower for w in ["redis", "cache", "eviction", "maxmemory"]):
+        responses.append("""### 🟥 Redis Cache & Eviction Optimization
+
+> [!IMPORTANT]
+> If Redis hits its memory threshold and eviction is disabled, commands fail with OOM errors.
+
+#### Quick CLI Diagnostic Flow
+1. **Inspect Cache Memory Usage**:
+   ```bash
+   redis-cli info memory | grep -E "used_memory_human|maxmemory_human|mem_fragmentation_ratio"
+   ```
+2. **Get Current Eviction Policy**:
+   ```bash
+   redis-cli config get maxmemory-policy
+   ```
+3. **Hot-fix Eviction Policy (to prevent writes blocking)**:
+   ```bash
+   redis-cli config set maxmemory-policy allkeys-lru
+   ```
+4. **Monitor Real-time Cache Traffic**:
+   ```bash
+   redis-cli monitor
+   ```
+""")
+
+    # 7. Kafka / Lag
+    if any(w in msg_lower for w in ["kafka", "lag", "queue", "topic", "consumer", "broker"]):
+        responses.append("""### ⿠ Apache Kafka Consumer Lag Runbook
+
+> [!WARNING]
+> High consumer lag indicates consumer processing logic is slower than the incoming partition message produce rate.
+
+#### Mitigation Action Items
+1. **Describe Consumer Group Lag Details**:
+   ```bash
+   kafka-consumer-groups.sh --bootstrap-server <broker-host>:9092 \\
+     --describe --group <my-consumer-group>
+   ```
+2. **Increase Partition Count**: Scale the partitions of the target topic (only if you need to scale parallel consumers).
+3. **Scale Consumer Replicas**: If partition count is larger than consumer count, scale the consumer deployment replicas.
+   ```bash
+   kubectl scale deployment order-processor-consumer --replicas=5
+   ```
+4. **Reset Offset to Latest (Emergency Skip)**:
+   ```bash
+   kafka-consumer-groups.sh --bootstrap-server <broker-host>:9092 \\
+     --group <my-consumer-group> --reset-offsets --to-latest --execute --topic <my-topic>
+   ```
+""")
+
+    # 8. Network / Connectivity / DNS
+    if any(w in msg_lower for w in ["network", "502", "ingress", "nginx", "packet", "dns", "connectivity", "ping", "curl", "resolve"]):
+        responses.append("""### 🌐 Network Routing & Packet Diagnostics
+
+> [!NOTE]
+> Network boundaries are diagnosed by checking local interface states, DNS resolution, and TCP/HTTP handshakes.
+
+#### Connectivity Troubleshooting Command-line Toolset
+* **Test Local DNS Resolution**:
+  ```bash
+  nslookup api.service.local
+  # or
+  dig +short api.service.local
+  ```
+* **Verify HTTP Endpoints & Trace Handshakes**:
+  ```bash
+  curl -Iv --connect-timeout 5 https://api.service.local/healthz
+  ```
+* **Check Active Port Listeners & Sockets**:
+  ```bash
+  ss -tulpn | grep LISTEN
+  ```
+* **Trace Routing Hops**:
+  ```bash
+  traceroute api.service.local
+  ```
+""")
+
+    # 9. CI/CD / Pipeline
+    if any(w in msg_lower for w in ["ci", "cd", "pipeline", "jenkins", "github action", "workflow", "build"]):
+        responses.append("""### 🚀 CI/CD Pipeline & Runner Diagnostics
+
+> [!IMPORTANT]
+> Pipeline failures are commonly caused by expired credentials, runner disk exhaustion, or docker-in-docker caching issues.
+
+#### Troubleshooting Strategy
+1. **Check Pipeline Secrets**: Verify AWS credentials, Docker Registry tokens, or GitHub tokens are current and not expired.
+2. **Inspect Runner Disk Capacity**: Check if the runner host has run out of disk space during image building.
+   ```bash
+   df -h
+   docker system prune -a --volumes -f
+   ```
+3. **Inspect Local Git Status & Revisions**:
+   ```bash
+   git status
+   git log -n 5 --oneline
+   ```
+""")
+
+    if responses:
+        return "\n\n---\n\n".join(responses)
+
+    # Fallback response listing suggestions
+    return """### 👋 Welcome to the SRE DevOps Copilot!
+
+I am running in **Offline Mode** (no `GEMINI_API_KEY` configured). I can provide you with comprehensive offline SRE diagnostics, step-by-step troubleshooting runbooks, and CLI commands.
+
+Please try asking me about any of the following DevOps areas:
+
+| Area | Sample Prompts |
+|---|---|
+| **🐳 Docker** | *"Troubleshoot docker exit code 137"*, *"inspect docker container status"* |
+| **☸️ Kubernetes** | *"kubectl describe pod shows crashloopbackoff"*, *"k8s ingress 502"* |
+| **☁️ AWS Cloud** | *"suggest aws cost saving ideas"*, *"orphaned ebs volumes"* |
+| **⚡ Performance** | *"how to check high cpu memory usage on linux"*, *"oom leak"* |
+| **🗄️ Database** | *"postgres too many connections"*, *"find long running query postgres"* |
+| **🟥 Redis Cache** | *"redis maxmemory eviction policy"*, *"redis memory usage info"* |
+| **⿠ Kafka Queue** | *"how to fix consumer lag in kafka"*, *"describe consumer group"* |
+| **🌐 Networking** | *"debug connection refused or timeout"*, *"nslookup dns resolve"* |
+| **🚀 CI/CD** | *"ci/cd pipeline credentials expired"*, *"clean builder cache"* |
+
+*What system issues are you currently investigating?*"""
+
+
 async def generate_chat_response(session_history: list, new_message: str) -> str:
     """
     Generates a conversational response using the Gemini API.
-    Uses context-aware history. Falls back to a mock handler if the API key is missing.
+    Uses context-aware history. Falls back to a mock handler if the API key is missing or fails.
     """
     if not settings.GEMINI_API_KEY:
         logger.info("GEMINI_API_KEY is not set. Using mock chatbot.")
-        # Local mock assistant replies for demo
-        msg_lower = new_message.lower()
-        if "docker" in msg_lower:
-            return "To troubleshoot Docker issues, common tools include `docker ps` to list containers, `docker logs <container_id>` to view stdout/stderr, and `docker inspect <container_id>` to check env variables, networks, and storage mounts. If a container exits with code 137, it was OOM-killed; verify memory limits."
-        elif "kubernetes" in msg_lower or "pod" in msg_lower or "k8s" in msg_lower:
-            return "Kubernetes troubleshooting flowchart:\n1. Run `kubectl get pods` to verify statuses.\n2. Run `kubectl describe pod <pod-name>` to see events (e.g. ImagePullBackOff, FailedScheduling).\n3. Run `kubectl logs <pod-name> -c <container-name>` to get container stdout.\n4. If a pod restarted, use `kubectl logs <pod-name> --previous` to see the log of the crashed instance."
-        elif "aws" in msg_lower or "cost" in msg_lower:
-            return "For AWS optimization, check for idle EC2 instances using AWS Compute Optimizer, look for unused EBS volumes, delete orphaned Elastic IPs, and migrate from GP2 to GP3 volumes. For credentials, verify using `aws sts get-caller-identity`."
-        return "I am your AI DevOps Assistant. You can ask me questions about Docker, Kubernetes, AWS, Linux, CI/CD pipelines, or Prometheus monitoring configurations. Let me know what you'd like to troubleshoot!"
+        return run_offline_chat_response(new_message)
 
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={settings.GEMINI_API_KEY}"
 
@@ -1328,4 +1605,5 @@ async def generate_chat_response(session_history: list, new_message: str) -> str
     except Exception as e:
         logger.error(f"Gemini Chat API failed: {str(e)}")
 
-    return "I apologize, I am having trouble connecting to my AI core. Please check my configuration or retry in a moment."
+    logger.warning("Gemini API call failed or timed out. Falling back to local SRE offline chatbot.")
+    return run_offline_chat_response(new_message)
