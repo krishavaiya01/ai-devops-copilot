@@ -109,7 +109,7 @@ export const AIChat: React.FC = () => {
             <div className="space-y-2">
               <h4 className="text-sm font-semibold text-white">Ask your SRE Assistant</h4>
               <p className="text-xs text-gray-400 leading-relaxed">
-                Troubleshoot Docker, Kubernetes clusters, AWS cloud networks, or Linux servers. 
+                Troubleshoot Docker, Kubernetes clusters, AWS cloud networks, or Linux servers.
                 Enter tracebacks, query CLI command options, or request cloud cost savings advice.
               </p>
             </div>
@@ -137,11 +137,10 @@ export const AIChat: React.FC = () => {
                 className={`flex w-full ${isUser ? 'justify-end' : 'justify-start'} animate-fadeIn`}
               >
                 <div
-                  className={`max-w-3xl rounded-xl p-4 text-xs leading-relaxed whitespace-pre-wrap ${
-                    isUser
+                  className={`max-w-3xl rounded-xl p-4 text-xs leading-relaxed whitespace-pre-wrap ${isUser
                       ? 'bg-indigo-600 text-white rounded-tr-none'
                       : 'bg-[#111827] border border-[#1e293b] text-gray-200 rounded-tl-none'
-                  }`}
+                    }`}
                 >
                   {/* Sender badge header */}
                   <div className="flex items-center space-x-1.5 mb-2 text-[10px] text-gray-400 font-semibold uppercase tracking-wider">

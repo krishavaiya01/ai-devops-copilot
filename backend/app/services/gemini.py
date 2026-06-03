@@ -1280,16 +1280,33 @@ async def analyze_log_with_ai(content: str) -> dict:
 
 def run_offline_chat_response(new_message: str) -> str:
     msg_lower = new_message.lower()
+    
+    # Automatically detect Incident Mode (pasted logs or explicit log/incident analysis) vs Chat Mode
+    # If the user pasted error traces, multiple lines, or asked to explain logs, use Incident Mode.
+    is_incident_mode = (
+        "explain logs" in msg_lower 
+        or "analyze logs" in msg_lower 
+        or "log:" in msg_lower 
+        or "incident commander" in msg_lower
+        or ("\n" in new_message and any(w in msg_lower for w in ["exception", "error", "failed", "crash", "exit code", "oom", "panic"]))
+    )
+    
     responses = []
 
     # 1. Docker / Container
     if any(w in msg_lower for w in ["docker", "container", "image", "dockerfile"]):
-        responses.append("""### 🐳 Docker & Container Runbook
+        if is_incident_mode:
+            responses.append("""🚨 Incident Summary
+Root Cause: Container OOMKilled (Exit Code 137) or process termination.
+Severity: P2 Major
+Confidence: 95%
+Business Impact: Single service replica failure.
 
-> [!NOTE]
-> Containerization failures are typically caused by memory limits (OOMKilled), application errors (Exit Code 1), or network/mount mismatches.
+🔍 Evidence
+* Container exited with code 137 (SIGKILL).
+* Kernel daemon logs show out-of-memory killing operations (`dmesg` OOM-killer).
 
-#### Diagnostic Workflow
+⚡ Immediate Actions
 1. **Inspect Container Status**:
    ```bash
    docker ps -a --format "table {{.ID}}\\t{{.Names}}\\t{{.Status}}\\t{{.Ports}}"
@@ -1307,22 +1324,48 @@ def run_offline_chat_response(new_message: str) -> str:
    docker inspect <container_name_or_id>
    ```
 
-#### Common Exit Codes Reference
-| Exit Code | Signal / Reason | Troubleshooting Actions |
-|---|---|---|
-| **137** | `SIGKILL` (OOMKilled) | Inspect kernel logs (`dmesg -T \\| grep -i oom`). Increase container memory limit. |
-| **139** | `SIGSEGV` (Segmentation fault) | Check native dependencies, memory safety violations, or library version mismatches. |
-| **1** | Application Error | Examine stdout/stderr logs via `docker logs`. Check application config files. |
+🛡 Long-Term Prevention
+* Set appropriate memory limits (`--memory` flag or `resources.limits.memory` in Kubernetes).
+* Optimize application heap size (e.g. `NODE_OPTIONS="--max-old-space-size=2048"`).
 """)
+        else:
+            responses.append("""### Docker Exit Code 137
+
+Exit Code 137 indicates that the container was terminated by the host operating system, most likely because it ran out of memory. 🐳
+
+Why it happens:
+* The container exceeded its hard memory limit set in the configuration.
+* The host system ran out of physical memory, triggering the Linux kernel Out-Of-Memory (OOM) killer.
+
+Commands to run:
+```bash
+# Check if the container was OOMKilled
+docker inspect <container_id> --format='{{.State.OOMKilled}}'
+
+# View last 100 lines of logs
+docker logs --tail 100 <container_id>
+
+# Monitor container resource usage
+docker stats
+```
+
+Recommended fix:
+Increase the container memory limit or profile the application to identify and resolve memory leaks.""")
 
     # 2. Kubernetes / Pod
     if any(w in msg_lower for w in ["kubernetes", "k8s", "pod", "kubectl", "ingress", "helm", "deployment", "statefulset"]):
-        responses.append("""### ☸️ Kubernetes (K8s) Cluster Diagnostics
+        if is_incident_mode:
+            responses.append("""🚨 Incident Summary
+Root Cause: Pod CrashLoopBackOff or ImagePullBackOff configuration error.
+Severity: P1 Critical
+Confidence: 92%
+Business Impact: Microservice disruption in target namespace.
 
-> [!IMPORTANT]
-> A robust K8s debugging flow isolates issues sequentially from Pod status, Events, Logs, to Network/Service connectivity.
+🔍 Evidence
+* Pod state set to CrashLoopBackOff or Pending.
+* K8s event logs show restart backoffs or pull image failures.
 
-#### Step-by-Step Triage Flow
+⚡ Immediate Actions
 1. **Check Pod Lifecycle States**:
    ```bash
    kubectl get pods -A -o wide --field-selector status.phase!=Running
@@ -1347,16 +1390,53 @@ def run_offline_chat_response(new_message: str) -> str:
    kubectl get ingress -A
    kubectl describe ingress <ingress-name> -n <namespace>
    ```
+
+🛡 Long-Term Prevention
+* Deploy readiness/liveness probes correctly with delay thresholds.
+* Implement cluster autoscaler and configure resource limits for all system namespaces.
 """)
+        else:
+            responses.append("""### Kubernetes Pod CrashLoopBackOff
+
+A pod in CrashLoopBackOff means that the container starts, fails, and restarts repeatedly in a loop. ☸️
+
+Why it happens:
+* The application code crashed on startup (e.g. missing environment variables or file paths).
+* The container failed its configured liveness probe repeatedly.
+* The container exceeded its configured memory limits (OOMKilled).
+
+Commands to run:
+```bash
+# Check pod state and restart count
+kubectl get pods
+
+# Describe pod configuration and review events
+kubectl describe pod <pod_name>
+
+# View logs of the currently failing container
+kubectl logs <pod_name>
+
+# View logs of the previous crashed instance
+kubectl logs <pod_name> --previous
+```
+
+Recommended fix:
+Inspect logs for startup exceptions. Ensure all necessary configuration secrets and environment variables are present and correct.""")
 
     # 3. AWS / Cost / Optimization
     if any(w in msg_lower for w in ["aws", "cloud", "cost", "optimize", "billing", "ebs", "ec2", "s3", "iam"]):
-        responses.append("""### ☁️ AWS Cloud Infrastructure & Cost Optimization
+        if is_incident_mode:
+            responses.append("""🚨 Incident Summary
+Root Cause: Unused/Idle Cloud Resources and legacy GP2 volumes.
+Severity: P3 Moderate
+Confidence: 98%
+Business Impact: Monthly budget overruns and resource wastage.
 
-> [!TIP]
-> AWS cloud architecture relies on maintaining resource hygiene—pruning detached disks, consolidating compute plans, and selecting appropriate storage tiers.
+🔍 Evidence
+* Active unattached EBS volumes detected in AWS Console.
+* Compute Optimizer flags EC2 CPU utilization under 5%.
 
-#### Quick Cost-Saving Action Checklist
+⚡ Immediate Actions
 * **Identify Idle Compute Instances**: Audit utilization patterns to locate EC2 instances with average CPU $< 5\\%$.
 * **Find Orphaned EBS Storage**: List all volumes in `available` (unattached) status and delete them.
   ```bash
@@ -1371,16 +1451,47 @@ def run_offline_chat_response(new_message: str) -> str:
   ```bash
   aws sts get-caller-identity
   ```
+
+🛡 Long-Term Prevention
+* Setup AWS Budgets and cost threshold alert pipelines.
+* Configure automated lifecycle policies for S3 and EBS volume cleanup scripts.
 """)
+        else:
+            responses.append("""### AWS Cost Optimization Guide
+
+Optimizing AWS costs involves identifying orphaned resources and scaling down underutilized services. ☁️
+
+Why it happens:
+* EC2 instances are provisioned larger than needed (underutilized CPU).
+* EBS storage volumes remain active after their associated EC2 instances are deleted.
+* Unused Elastic IPs remain allocated, accruing hourly idle charges.
+
+Commands to run:
+```bash
+# Find all unattached (available) EBS volumes
+aws ec2 describe-volumes --filters Name=status,Values=available --query "Volumes[*].{VolumeId:VolumeId,Size:Size}" --output table
+
+# Find all unassociated Elastic IPs
+aws ec2 describe-addresses --query "Addresses[?AssociationId==null].{PublicIp:PublicIp,AllocationId:AllocationId}" --output table
+```
+
+Recommended fix:
+Prune unused resources periodically, migrate storage from legacy `gp2` to modern `gp3` volumes, and utilize AWS Compute Optimizer for resizing recommendations.""")
 
     # 4. CPU / RAM / Memory / Performance / Saturation
     if any(w in msg_lower for w in ["cpu", "ram", "memory", "performance", "saturation", "load", "leak", "oom", "slow"]):
-        responses.append("""### ⚡ System Performance & Resource Saturation
+        if is_incident_mode:
+            responses.append("""🚨 Incident Summary
+Root Cause: Resource CPU/RAM Saturation on host.
+Severity: P2 Major
+Confidence: 90%
+Business Impact: Host degradation and service latency spikes.
 
-> [!WARNING]
-> High load average is not always a CPU bottleneck—check for I/O wait times, paging activity, and application-level memory heap leaks.
+🔍 Evidence
+* Load average exceeding total virtual cores count.
+* Free memory pool approaching zero; swap space active.
 
-#### Linux Host Troubleshooting Tools
+⚡ Immediate Actions
 1. **Analyze Overall Process Activity**:
    ```bash
    top -b -n 1 | head -n 25
@@ -1398,19 +1509,48 @@ def run_offline_chat_response(new_message: str) -> str:
    ps aux --sort=-%mem | head -n 10 | awk '{print $2, $4, $11}'
    ```
 
-#### Application Memory Profiling (NodeJS example)
-* **Trace heap allocation flags**: Run with `--max-old-space-size=2048` to adjust limits.
-* **Analyze core dump or heap dump snapshots**: Utilize `heapdump` or Chrome DevTools to trace reference leaks.
+🛡 Long-Term Prevention
+* Deploy Node Exporter with Prometheus alert trigger loops.
+* Configure cgroups limit constraints and optimize garbage collection threads.
 """)
+        else:
+            responses.append("""### Host Performance & Resource Saturation
+
+Resource saturation occurs when the system demand exceeds CPU, RAM, or disk IO capacity. ⚡
+
+Why it happens:
+* High CPU load can stem from runaway processes, high context switching, or bad application code.
+* High RAM usage and swap thrashing are often caused by memory leaks or misconfigured limits.
+
+Commands to run:
+```bash
+# Find top CPU-consuming processes
+top -b -o +%CPU | head -n 15
+
+# Check available memory and swap space
+free -h
+
+# Check top 10 memory-consuming processes
+ps aux --sort=-%mem | head -n 10
+```
+
+Recommended fix:
+Identify the specific process eating resources, profile its memory/CPU usage, and add horizontal scaling or node resource upgrades if necessary.""")
 
     # 5. Database / Postgres
     if any(w in msg_lower for w in ["database", "postgres", "postgresql", "sql", "query", "connection pool"]):
-        responses.append("""### 🗄️ PostgreSQL Database Performance & Pools
+        if is_incident_mode:
+            responses.append("""🚨 Incident Summary
+Root Cause: Connection Pool Exhaustion on Postgres.
+Severity: P1 Critical
+Confidence: 96%
+Business Impact: Transaction failures and API gateway timeouts.
 
-> [!CAUTION]
-> Avoid running unindexed queries. Database connection pool exhaustion will cascade and cause API gateway time-outs.
+🔍 Evidence
+* Active connections hitting DB max_connections limit.
+* API request handler logs showing DB connection timeout errors.
 
-#### Incident Triage Runbook
+⚡ Immediate Actions
 1. **Analyze Pool Connection State Density**:
    ```sql
    SELECT count(*), state, query 
@@ -1436,16 +1576,51 @@ def run_offline_chat_response(new_message: str) -> str:
    ```sql
    VACUUM ANALYZE <table_name>;
    ```
+
+🛡 Long-Term Prevention
+* Deploy pgBouncer proxy layer in front of the PostgreSQL cluster.
+* Optimize database queries by adding appropriate indexes.
 """)
+        else:
+            responses.append("""### Database Connection Exhaustion
+
+Database connection exhaustion occurs when Postgres reaches its maximum connection limit (`max_connections`), blocking new client requests. 🗄️
+
+Why it happens:
+* Application servers are not closing connections properly or pool sizes are configured too high.
+* Long-running, unindexed queries are holding locks and preventing active connections from closing.
+
+Commands to run:
+```sql
+-- Count active vs idle database connections
+SELECT count(*), state FROM pg_stat_activity GROUP BY state;
+
+-- View connections running for more than 30 seconds
+SELECT pid, now() - xact_start AS duration, query, state
+FROM pg_stat_activity
+WHERE state != 'idle' AND now() - xact_start > interval '30 seconds';
+
+-- Terminate a specific query backend process
+SELECT pg_terminate_backend(<pid>);
+```
+
+Recommended fix:
+Deploy a database connection pooler like pgBouncer, tune connection limits, and optimize slow queries using query plan analysis.""")
 
     # 6. Redis / Cache
     if any(w in msg_lower for w in ["redis", "cache", "eviction", "maxmemory"]):
-        responses.append("""### 🟥 Redis Cache & Eviction Optimization
+        if is_incident_mode:
+            responses.append("""🚨 Incident Summary
+Root Cause: Redis Maxmemory Limit Saturated with eviction disabled.
+Severity: P2 Major
+Confidence: 94%
+Business Impact: Cache write failures and degraded user session storage.
 
-> [!IMPORTANT]
-> If Redis hits its memory threshold and eviction is disabled, commands fail with OOM errors.
+🔍 Evidence
+* Redis info output shows used_memory approaching maxmemory threshold.
+* Client commands failing with: OOM command not allowed when used memory > 'maxmemory'.
 
-#### Quick CLI Diagnostic Flow
+⚡ Immediate Actions
 1. **Inspect Cache Memory Usage**:
    ```bash
    redis-cli info memory | grep -E "used_memory_human|maxmemory_human|mem_fragmentation_ratio"
@@ -1462,16 +1637,49 @@ def run_offline_chat_response(new_message: str) -> str:
    ```bash
    redis-cli monitor
    ```
+
+🛡 Long-Term Prevention
+* Scale Redis cluster node replicas or adjust eviction policies to allkeys-lru.
+* Configure cache timeouts (TTLs) on all transient key writes.
 """)
+        else:
+            responses.append("""### Redis Maxmemory Saturation
+
+When Redis reaches its maximum memory limit, it will either evict keys or reject new write operations with an OOM error. 🟥
+
+Why it happens:
+* The memory utilization hit the `maxmemory` limit while the eviction policy was set to `noeviction`.
+* Transient cache keys are written without a Time-To-Live (TTL) expiration.
+
+Commands to run:
+```bash
+# Check Redis memory status
+redis-cli info memory | grep -E "used_memory_human|maxmemory_human"
+
+# Check active eviction policy
+redis-cli config get maxmemory-policy
+
+# Set eviction policy to allkeys-lru (least recently used)
+redis-cli config set maxmemory-policy allkeys-lru
+```
+
+Recommended fix:
+Enable an appropriate eviction policy like `allkeys-lru`, set TTLs on transient session data, and scale Redis RAM allocations if cache usage is growing.""")
 
     # 7. Kafka / Lag
     if any(w in msg_lower for w in ["kafka", "lag", "queue", "topic", "consumer", "broker"]):
-        responses.append("""### ⿠ Apache Kafka Consumer Lag Runbook
+        if is_incident_mode:
+            responses.append("""🚨 Incident Summary
+Root Cause: Consumer Group Lag and partition bottleneck.
+Severity: P1 Critical
+Confidence: 93%
+Business Impact: Processing delays on message topics.
 
-> [!WARNING]
-> High consumer lag indicates consumer processing logic is slower than the incoming partition message produce rate.
+🔍 Evidence
+* Kafka consumer group lag metrics exceeding SLA threshold (>50,000).
+* Partition offsets increasing while consumer offset stays stagnant.
 
-#### Mitigation Action Items
+⚡ Immediate Actions
 1. **Describe Consumer Group Lag Details**:
    ```bash
    kafka-consumer-groups.sh --bootstrap-server <broker-host>:9092 \\
@@ -1487,16 +1695,46 @@ def run_offline_chat_response(new_message: str) -> str:
    kafka-consumer-groups.sh --bootstrap-server <broker-host>:9092 \\
      --group <my-consumer-group> --reset-offsets --to-latest --execute --topic <my-topic>
    ```
+
+🛡 Long-Term Prevention
+* Setup Prometheus Kafka Exporter alerts for Consumer Lag limits.
+* Scale topic partition count dynamically according to message volumes.
 """)
+        else:
+            responses.append("""### Apache Kafka Consumer Lag
+
+Consumer lag indicates that a consumer group is reading messages from a topic slower than the producers are writing them. ⿠
+
+Why it happens:
+* The consumer processing logic is slow or bottlenecked (e.g. database insertion delays).
+* There are fewer consumers active than partitions, leaving partitions unallocated or shared.
+
+Commands to run:
+```bash
+# Check consumer group offsets and lag per partition
+kafka-consumer-groups.sh --bootstrap-server <broker_host>:9092 --describe --group <group_name>
+
+# Scale consumer pods deployment
+kubectl scale deployment <consumer_deployment> --replicas=<count>
+```
+
+Recommended fix:
+Scale up consumer replicas, optimize database write speeds in consumer code, and partition topics to allow greater parallelism.""")
 
     # 8. Network / Connectivity / DNS
     if any(w in msg_lower for w in ["network", "502", "ingress", "nginx", "packet", "dns", "connectivity", "ping", "curl", "resolve"]):
-        responses.append("""### 🌐 Network Routing & Packet Diagnostics
+        if is_incident_mode:
+            responses.append("""🚨 Incident Summary
+Root Cause: VPC DNS Resolution failure or Nginx Ingress 502 Bad Gateway.
+Severity: P1 Critical
+Confidence: 91%
+Business Impact: Complete client route block.
 
-> [!NOTE]
-> Network boundaries are diagnosed by checking local interface states, DNS resolution, and TCP/HTTP handshakes.
+🔍 Evidence
+* Nginx ingress controller outputting 502 Bad Gateway.
+* Route53 or CoreDNS logs showing timeout errors during lookup.
 
-#### Connectivity Troubleshooting Command-line Toolset
+⚡ Immediate Actions
 * **Test Local DNS Resolution**:
   ```bash
   nslookup api.service.local
@@ -1515,16 +1753,50 @@ def run_offline_chat_response(new_message: str) -> str:
   ```bash
   traceroute api.service.local
   ```
+
+🛡 Long-Term Prevention
+* Implement CoreDNS replica scaling and local cluster DNS cache configurations.
+* Set up multi-AZ load balancers and route paths validation checks.
 """)
+        else:
+            responses.append("""### Network Ingress 502 Bad Gateway
+
+A 502 Bad Gateway error means the ingress proxy controller could not establish a connection to the upstream service. 🌐
+
+Why it happens:
+* The backend application pods are down or crashing, failing their port health checks.
+* CoreDNS resolution failures inside the cluster namespace.
+* Incorrect service port mappings in the Ingress rule configurations.
+
+Commands to run:
+```bash
+# Test internal DNS resolution
+nslookup api.service.local
+
+# Check active service port bindings
+ss -tulpn | grep LISTEN
+
+# Trace routing hops to endpoint
+traceroute api.service.local
+```
+
+Recommended fix:
+Verify that backend pods are healthy and running, check the target service port configurations, and review CoreDNS health states.""")
 
     # 9. CI/CD / Pipeline
     if any(w in msg_lower for w in ["ci", "cd", "pipeline", "jenkins", "github action", "workflow", "build"]):
-        responses.append("""### 🚀 CI/CD Pipeline & Runner Diagnostics
+        if is_incident_mode:
+            responses.append("""🚨 Incident Summary
+Root Cause: Expired runner credentials or builder disk exhaustion.
+Severity: P3 Moderate
+Confidence: 95%
+Business Impact: Deployment pipelines blocked.
 
-> [!IMPORTANT]
-> Pipeline failures are commonly caused by expired credentials, runner disk exhaustion, or docker-in-docker caching issues.
+🔍 Evidence
+* Pipeline runner outputs disk space full error during build-and-push steps.
+* Auth failure when pushing image logs to ECR repository registry.
 
-#### Troubleshooting Strategy
+⚡ Immediate Actions
 1. **Check Pipeline Secrets**: Verify AWS credentials, Docker Registry tokens, or GitHub tokens are current and not expired.
 2. **Inspect Runner Disk Capacity**: Check if the runner host has run out of disk space during image building.
    ```bash
@@ -1536,17 +1808,51 @@ def run_offline_chat_response(new_message: str) -> str:
    git status
    git log -n 5 --oneline
    ```
+
+🛡 Long-Term Prevention
+* Enforce automated builder cache cleanup and registry token rotation schedules.
+* Configure OIDC role validation mechanisms to bypass static credentials storage.
 """)
+        else:
+            responses.append("""### CI/CD Pipeline Build Failures
+
+CI/CD pipeline builds fail during compilation, testing, or docker image registry pushing phases. 🚀
+
+Why it happens:
+* The runner node has run out of local disk space from legacy build cache.
+* Stored access credentials for registry services (like ECR or DockerHub) are expired or invalid.
+
+Commands to run:
+```bash
+# Check runner host disk space
+df -h
+
+# Prune inactive docker build layers and cache
+docker system prune -a --volumes -f
+
+# Verify local git revision state
+git log -n 5 --oneline
+```
+
+Recommended fix:
+Enable automated runner cache cleanup scripts, use OpenID Connect (OIDC) roles instead of static secrets, and review runner log errors.""")
 
     if responses:
         return "\n\n---\n\n".join(responses)
 
     # Fallback response listing suggestions
-    return """### 👋 Welcome to the SRE DevOps Copilot!
+    if is_incident_mode:
+        return """🚨 Incident Summary
+Root Cause: Offline Command Center Activated
+Severity: P5 Info
+Confidence: 100%
+Business Impact: Local offline triage database enabled.
 
-I am running in **Offline Mode** (no `GEMINI_API_KEY` configured). I can provide you with comprehensive offline SRE diagnostics, step-by-step troubleshooting runbooks, and CLI commands.
+🔍 Evidence
+* Offline mode triggered (Gemini key missing or currently experiencing demand).
 
-Please try asking me about any of the following DevOps areas:
+⚡ Immediate Actions
+Please choose from one of the following DevOps areas to check or troubleshoot:
 
 | Area | Sample Prompts |
 |---|---|
@@ -1560,7 +1866,27 @@ Please try asking me about any of the following DevOps areas:
 | **🌐 Networking** | *"debug connection refused or timeout"*, *"nslookup dns resolve"* |
 | **🚀 CI/CD** | *"ci/cd pipeline credentials expired"*, *"clean builder cache"* |
 
-*What system issues are you currently investigating?*"""
+🛡 Long-Term Prevention
+Configure a valid `GEMINI_API_KEY` in the settings to activate dynamic conversational capabilities.
+"""
+    else:
+        return """### SRE AI DevOps Assistant
+
+I am currently running in **Offline Mode**. I can assist you with local, structured SRE diagnostics, step-by-step troubleshooting runbooks, and CLI commands. 👋
+
+Please try asking me about any of the following DevOps areas:
+
+*   **Docker:** Exit code 137/OOM, container stats, inspect options.
+*   **Kubernetes:** Pod lifecycle states, CrashLoopBackOff, events, logs triage.
+*   **AWS Cloud:** Cost optimization, unattached EBS storage, Elastic IPs.
+*   **Host Performance:** RAM/CPU saturation, linux host debugging commands.
+*   **Databases:** Postgres connection pooling, locks, slow query termination.
+*   **Caching:** Redis maxmemory policy, LRU eviction settings.
+*   **Queues:** Apache Kafka consumer group lag checking and offset resets.
+*   **Networking:** Ingress HTTP 502 Gateway, coreDNS lookup resolution.
+*   **CI/CD:** Runner credentials expired, pipeline cache clearing.
+
+Let me know what system component or error you are currently investigating!"""
 
 
 async def generate_chat_response(session_history: list, new_message: str) -> str:
@@ -1581,12 +1907,45 @@ async def generate_chat_response(session_history: list, new_message: str) -> str
             {"role": "user" if h["role"] == "user" else "model", "parts": [{"text": h["content"]}]}
         )
 
+    system_prompt = (
+        "System prompt: You are a Senior SRE, Cloud Architect, and Kubernetes Expert. "
+        "Help the user troubleshoot. Determine the correct response mode based on the user request:\n\n"
+        "1. If the user is pasting logs, analyzing incidents, or asking to 'Explain Logs', use INCIDENT MODE. "
+        "In INCIDENT MODE, format output as a detailed SRE incident report using sections like:\n"
+        "🚨 Incident Summary\n"
+        "Root Cause: [details]\n"
+        "Severity: [details]\n"
+        "Confidence: [details]\n"
+        "Business Impact: [details]\n\n"
+        "🔍 Evidence\n"
+        "* [evidence details]\n\n"
+        "⚡ Immediate Actions\n"
+        "1. [actions]\n\n"
+        "🛡 Long-Term Prevention\n"
+        "* [prevention]\n\n"
+        "2. If the user is asking general questions, greeting, or troubleshooting a concept, use CHAT MODE (default). "
+        "In CHAT MODE, act like ChatGPT: keep it conversational, highly readable, clean, and professional. "
+        "Avoid excessive emojis (maximum 1 emoji per response). Use ONLY headings, bullet points, and code blocks. "
+        "Do NOT output giant incident report templates. Format using this structure:\n"
+        "### [Topic Title]\n"
+        "[Short explanation of the concept/issue]\n\n"
+        "Why it happens:\n"
+        "* [reasons]\n\n"
+        "Commands to run:\n"
+        "```bash\n"
+        "[commands]\n"
+        "```\n\n"
+        "Recommended fix:\n"
+        "[remediation guidelines]\n\n"
+        f"User message: {new_message}"
+    )
+
     contents.append(
         {
             "role": "user",
             "parts": [
                 {
-                    "text": f"System prompt: You are a friendly, helpful AI DevOps Copilot. Help the user troubleshoot. Keep response markdown formatted, structured, and action-oriented.\nUser message: {new_message}"
+                    "text": system_prompt
                 }
             ],
         }
