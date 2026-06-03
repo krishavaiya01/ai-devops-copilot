@@ -20,7 +20,9 @@ import {
   Workflow, 
   Cpu, 
   Radio, 
-  AlertTriangle 
+  AlertTriangle,
+  Globe,
+  ShieldCheck
 } from 'lucide-react';
 
 interface BusinessImpact {
@@ -51,8 +53,11 @@ interface SubsystemsAnalysis {
   redis: SubsystemAnalysis;
   kafka: SubsystemAnalysis;
   aws_infrastructure: SubsystemAnalysis;
+  dns: SubsystemAnalysis;
+  tls_certificates: SubsystemAnalysis;
   network: SubsystemAnalysis;
   cicd: SubsystemAnalysis;
+  data_integrity: SubsystemAnalysis;
   business_impact: SubsystemAnalysis;
 }
 
@@ -69,7 +74,8 @@ interface Analysis {
   primary_root_causes: string[];
   confidence_score: number;
   supporting_evidence: string;
-  contributing_factors: string;
+  contributing_factors: string[];
+  symptoms: string[];
   infrastructure_issues: string;
   kubernetes_issues: string;
   database_issues: string;
@@ -105,8 +111,11 @@ const getSubsystemTitle = (key: string) => {
     redis: "Redis",
     kafka: "Kafka",
     aws_infrastructure: "AWS Infrastructure",
+    dns: "DNS",
+    tls_certificates: "TLS/Certificates",
     network: "Network",
     cicd: "CI/CD",
+    data_integrity: "Data Integrity",
     business_impact: "Business Impact"
   };
   return titles[key] || key;
@@ -115,8 +124,8 @@ const getSubsystemTitle = (key: string) => {
 const getStatusBadgeColor = (status: string) => {
   const s = status?.toUpperCase();
   if (s === 'HEALTHY') return 'bg-emerald-950/40 text-emerald-400 border-emerald-900/40';
-  if (s === 'DEGRADED') return 'bg-amber-950/40 text-amber-400 border-amber-900/40';
-  if (s === 'FAILED') return 'bg-rose-950/40 text-rose-400 border-rose-900/40';
+  if (s === 'WARNING' || s === 'DEGRADED') return 'bg-amber-950/40 text-amber-400 border-amber-900/40';
+  if (s === 'CRITICAL' || s === 'FAILED') return 'bg-rose-950/40 text-rose-400 border-rose-900/40';
   if (s === 'INFO') return 'bg-blue-950/40 text-blue-400 border-blue-900/40';
   return 'bg-gray-800/40 text-gray-400 border-gray-700/50';
 };
@@ -129,8 +138,11 @@ const renderSubsystemIcon = (key: string) => {
   if (key === 'redis') return <Network className="h-4 w-4 text-rose-400 shrink-0" />;
   if (key === 'kafka') return <Radio className="h-4 w-4 text-amber-400 shrink-0" />;
   if (key === 'aws_infrastructure') return <Cloud className="h-4 w-4 text-amber-400 shrink-0" />;
+  if (key === 'dns') return <Globe className="h-4 w-4 text-sky-400 shrink-0" />;
+  if (key === 'tls_certificates') return <ShieldCheck className="h-4 w-4 text-teal-400 shrink-0" />;
   if (key === 'network') return <Server className={iconClass} />;
   if (key === 'cicd') return <Workflow className="h-4 w-4 text-cyan-400 shrink-0" />;
+  if (key === 'data_integrity') return <ShieldAlert className="h-4 w-4 text-orange-400 shrink-0" />;
   if (key === 'business_impact') return <TrendingDown className="h-4 w-4 text-emerald-400 shrink-0" />;
   return <Cpu className={iconClass} />;
 };
@@ -195,7 +207,7 @@ export const LogAnalyzer: React.FC = () => {
 
   const getSeverityBadgeColor = (sev: string) => {
     const s = sev?.toUpperCase();
-    if (s === 'P1') return 'bg-rose-950/40 text-rose-400 border-rose-900/50';
+    if (s === 'P0' || s === 'P1') return 'bg-rose-955/40 text-rose-400 border-rose-900/50';
     if (s === 'P2') return 'bg-amber-950/40 text-amber-400 border-amber-900/50';
     if (s === 'P3') return 'bg-blue-950/40 text-blue-400 border-blue-900/50';
     if (s === 'P4') return 'bg-emerald-950/40 text-emerald-400 border-emerald-900/50';
@@ -353,8 +365,26 @@ export const LogAnalyzer: React.FC = () => {
                 </div>
                 <div>
                   <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Contributing Factors</h5>
-                  <p className="text-xs text-gray-300 leading-relaxed">{result.analysis?.contributing_factors}</p>
+                  <ul className="list-disc list-inside text-xs text-gray-300 space-y-1.5 bg-[#0a101d]/20 p-3 rounded border border-[#1e293b]/30">
+                    {Array.isArray(result.analysis?.contributing_factors) ? (
+                      result.analysis.contributing_factors.map((cf, idx) => (
+                        <li key={idx} className="leading-relaxed">{cf}</li>
+                      ))
+                    ) : (
+                      <li className="leading-relaxed">{result.analysis?.contributing_factors}</li>
+                    )}
+                  </ul>
                 </div>
+                {result.analysis?.symptoms && result.analysis.symptoms.length > 0 && (
+                  <div>
+                    <h5 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Symptoms</h5>
+                    <ul className="list-disc list-inside text-xs text-gray-300 space-y-1.5 bg-[#0a101d]/20 p-3 rounded border border-[#1e293b]/30">
+                      {result.analysis.symptoms.map((sym, idx) => (
+                        <li key={idx} className="leading-relaxed">{sym}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
 
               {/* Infrastructure Component Telemetry Warnings */}
@@ -389,7 +419,7 @@ export const LogAnalyzer: React.FC = () => {
                   </div>
                 )}
                 {result.analysis?.cicd_issues && result.analysis.cicd_issues !== 'None' && (
-                  <div className="flex items-start space-x-2 bg-cyan-950/20 border border-cyan-900/30 p-2.5 rounded-lg">
+                  <div className="flex items-start space-x-2 bg-[#082f49] border border-[#0369a1]/30 p-2.5 rounded-lg">
                     <Workflow className="h-4 w-4 text-cyan-400 shrink-0 mt-0.5" />
                     <div>
                       <span className="font-bold text-cyan-400 block text-[11px]">CI/CD Deployment Failure</span>
@@ -433,6 +463,20 @@ export const LogAnalyzer: React.FC = () => {
                       <span>Amazon Web Services:</span>
                     </span>
                     <span className="text-gray-300 truncate max-w-[200px]">{result.analysis?.cloud_issues || 'Healthy'}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-gray-500 flex items-center space-x-1">
+                      <Globe className="h-3.5 w-3.5 text-sky-400" />
+                      <span>DNS Configuration:</span>
+                    </span>
+                    <span className="text-gray-300 truncate max-w-[200px]">{result.analysis?.subsystem_analysis?.dns?.findings || 'Healthy'}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-gray-500 flex items-center space-x-1">
+                      <ShieldCheck className="h-3.5 w-3.5 text-teal-400" />
+                      <span>TLS certificates:</span>
+                    </span>
+                    <span className="text-gray-300 truncate max-w-[200px]">{result.analysis?.subsystem_analysis?.tls_certificates?.findings || 'Healthy'}</span>
                   </div>
                 </div>
               </div>
@@ -512,11 +556,11 @@ export const LogAnalyzer: React.FC = () => {
                           <div className="flex items-center justify-between text-[10px]">
                             <span className="text-gray-500 font-semibold">Severity:</span>
                             <span className={`font-bold px-1.5 py-0.2 rounded border text-[9px] ${
-                              subsystem.severity === 'Critical' || subsystem.severity === 'High'
+                              subsystem.severity === 'Critical' || subsystem.severity === 'High' || subsystem.severity === 'P0' || subsystem.severity === 'P1'
                                 ? 'text-rose-400 border-rose-900/30 bg-rose-950/20'
-                                : subsystem.severity === 'Medium'
+                                : subsystem.severity === 'Medium' || subsystem.severity === 'P2'
                                 ? 'text-amber-400 border-amber-900/30 bg-amber-950/20'
-                                : subsystem.severity === 'Low'
+                                : subsystem.severity === 'Low' || subsystem.severity === 'P3' || subsystem.severity === 'P4'
                                 ? 'text-blue-400 border-blue-900/30 bg-blue-950/20'
                                 : 'text-gray-500 border-gray-700/30'
                             }`}>

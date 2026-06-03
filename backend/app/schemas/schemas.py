@@ -83,10 +83,10 @@ class TimelineEventSchema(BaseModel):
     confidence_score: float
 
 class SubsystemAnalysisSchema(BaseModel):
-    status: str  # Healthy, Degraded, Failed, Info, N/A
+    status: str  # Healthy, Warning, Critical
     findings: str
     evidence: str
-    severity: str  # None, Low, Medium, High, Critical
+    severity: str  # P0-P5
     confidence: float
 
 class RootCauseMatrixItem(BaseModel):
@@ -103,8 +103,11 @@ class SubsystemsAnalysis(BaseModel):
     redis: SubsystemAnalysisSchema
     kafka: SubsystemAnalysisSchema
     aws_infrastructure: SubsystemAnalysisSchema
+    dns: SubsystemAnalysisSchema
+    tls_certificates: SubsystemAnalysisSchema
     network: SubsystemAnalysisSchema
     cicd: SubsystemAnalysisSchema
+    data_integrity: SubsystemAnalysisSchema
     business_impact: SubsystemAnalysisSchema
 
 class LogAnalysisResponse(BaseModel):
@@ -112,7 +115,8 @@ class LogAnalysisResponse(BaseModel):
     primary_root_causes: List[str]
     confidence_score: float
     supporting_evidence: str
-    contributing_factors: str
+    contributing_factors: List[str]
+    symptoms: List[str]
     infrastructure_issues: str
     kubernetes_issues: str
     database_issues: str
